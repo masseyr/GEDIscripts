@@ -22,7 +22,7 @@ python gedi_footprint.py [gedi directory] [output shapefile]
 
 
 def get_path(filename,
-             res=0.5,
+             res=0.0084,
              buffer=0.000135):
     """
     Method to extract path from a GEDI file
@@ -167,12 +167,6 @@ def locate_slice_by_group(pts, length):
 if __name__ == '__main__':
 
     script, gedi_dir, outfile, nproc = sys.argv
-
-    '''
-    gedi_dir = 'D:/temp/gedi/files/'
-    outfile = 'D:/temp/gedi/test_footprint_v8_mp.shp'
-    nproc = 2
-    '''
 
     nproc = int(nproc)
 
