@@ -1,2 +1,5 @@
-# GEDIscripts
- Scripts for processing NASA GEDI data
+## GEDI Scripts
+ 
+ Scripts for processing NASA [GEDI](https://gedi.umd.edu) data
+ 
+ 
