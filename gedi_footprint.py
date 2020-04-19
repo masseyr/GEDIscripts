@@ -16,19 +16,26 @@ The output is a shapefile with Geographic projection and
 WGS84 datum. the attributes of the shapefile include:
 BEAM, YEAR, JDAY, FILE
 
+python packages to install before using this script:
+GDAL
+scipy
+numpy
+h5py
+geosoup
+
 usage:
 python gedi_footprint.py [gedi directory] [output shapefile] [number of parallel processes]
 '''
 
 
 def get_path(filename,
-             res=0.5,
+             res=0.1,
              buffer=0.000135):
     """
     Method to extract path from a GEDI file
     :param filename: GEDI filename
-    :param res: bin resolution (degrees)
-    :param buffer: buffer from outermost point (degrees)
+    :param res: bin resolution (degrees) (default : 0.1 degrees)
+    :param buffer: buffer from outermost point (degrees) (default: 0.000135 deg or approx 12.5 mts)
     :return: (attribute dictionary, geometry WKT, None) if no error is raised while opening file
             (None, None, error string) if error is raised
     """
