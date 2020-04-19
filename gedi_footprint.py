@@ -22,7 +22,7 @@ python gedi_footprint.py [gedi directory] [output shapefile]
 
 
 def get_path(filename,
-             res=0.0084,
+             res=0.05,
              buffer=0.000135):
     """
     Method to extract path from a GEDI file
@@ -175,7 +175,7 @@ if __name__ == '__main__':
     vec = Vector(name='gedi_extent',
                  epsg=4326,
                  geom_type='multipolygon',
-                 in_memory=True,
+                 filename=outfile,
                  attr_def=attrib)
 
     file_list = Handler(dirname=gedi_dir).find_all('*.h5')
@@ -195,7 +195,9 @@ if __name__ == '__main__':
                 Opt.cprint(file_output, newline=' : ')
                 Opt.cprint(err_str)
 
+    vec.datasource = None
+
     Opt.cprint('\n----------------------------------------------------------')
     Opt.cprint(vec)
     Opt.cprint(outfile)
-    vec.write_vector(outfile)
+
