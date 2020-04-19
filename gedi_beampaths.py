@@ -178,27 +178,39 @@ if __name__ == '__main__':
     attrib = {'BEAM': 'int', 'FILE': 'str', 'YEAR': 'int', 'JDAY': 'int'}
 
     file_list = Handler(dirname=gedi_dir).find_all('*.h5')
+    n_files = len(file_list)
 
-    with mp.Pool(processes=nproc) as pool:
+    Opt.cprint('Number of files: {}'.format(str(n_files)))
 
-        vec = Vector(name='gedi_extent',
-                     epsg=4326,
-                     geom_type='multilinestring',
-                     filename=outfile,
-                     attr_def=attrib)
+    feat_dict = {}
 
-        for file_output, err_str in pool.imap_unordered(get_path, file_list):
-            if err_str is None and len(file_output) > 0:
-                for geom_wkt, attrs in file_output:
-                    vec.add_feat(ogr.CreateGeometryFromWkt(geom_wkt), attr=attrs)
+    pool = mp.Pool(processes=nproc)
 
-                Opt.cprint(str(list(set([attr['FILE'] for _, attr in file_output]))[0]) + ' : Processed')
-            else:
-                Opt.cprint(file_output, newline=' : ')
-                Opt.cprint(err_str)
+    for file_output, err_str in pool.imap_unordered(get_path, file_list):
+        if err_str is None and len(file_output) > 0:
+            for geom_wkt, attrs in file_output:
+                feat_dict.update({geom_wkt, attrs})
 
-        Opt.cprint(vec)
-        Opt.cprint(outfile)
-        vec.datasource = None
+            Opt.cprint(str(list(set([attr['FILE'] for _, attr in file_output]))[0]) + ' : READ')
+        else:
+            Opt.cprint(file_output, newline=' : ')
+            Opt.cprint(err_str)
 
-        Opt.cprint('\n----------------------------------------------------------')
+    Opt.cprint(len(feat_dict))
+
+    vec = Vector(name='gedi_extent',
+                 epsg=4326,
+                 geom_type='multilinestring',
+                 filename=outfile,
+                 attr_def=attrib)
+
+    Opt.cprint(vec)
+
+    for geom_wkt, attrs in feat_dict.items():
+        vec.add_feat(ogr.CreateGeometryFromWkt(geom_wkt), attr=attrs)
+
+    Opt.cprint(vec)
+    Opt.cprint(outfile)
+    vec.datasource = None
+
+    Opt.cprint('\n----------------------------------------------------------')
