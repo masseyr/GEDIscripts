@@ -136,8 +136,8 @@ def correct_bounds(u_bounds,
                    l_bounds,
                    bin_widths):
     """
-    Method to correct upper and lower bounds of GEDI beam path
-    The correction is most needed when he path is least parallel to equator and vice versa
+    Method to correct upper and lower bounds of GEDI beam path derived from histograms
+
     :param u_bounds: upper bounds of beam path : array([[x1, x2, ....],
                                                         [y1, y2, ....]])
     :param l_bounds: lower bounds of beam path : array([[x1, x2, ....],
