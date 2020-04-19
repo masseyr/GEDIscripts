@@ -17,7 +17,7 @@ WGS84 datum. the attributes of the shapefile include:
 BEAM, YEAR, JDAY, FILE
 
 usage:
-python gedi_footprint.py [gedi directory] [output shapefile]
+python gedi_footprint.py [gedi directory] [output shapefile] [number of parallel processes]
 '''
 
 
