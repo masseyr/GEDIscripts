@@ -72,51 +72,63 @@ def get_path(filename,
             err = ' '.join(e.args)
             continue
 
+        # make an array of lat lon
         pos_arr = np.vstack([lon_arr, lat_arr]).T
 
+        # remove NaN values
         nan_loc_pre = np.where(np.apply_along_axis(lambda x: not (np.isnan(x[0]) or np.isnan(x[1])), 1, pos_arr))
         pos_arr = pos_arr[nan_loc_pre]
 
+        # sort by x then by y
         pos_arr = pos_arr[np.lexsort((pos_arr[:, 0], pos_arr[:, 1]))]
 
+        # bin all points using the bin_edges array and find min, max
         upper_lims, _, _ = binned_statistic(pos_arr[:, 0], pos_arr[:, 1], statistic='max', bins=bin_edges)
         lower_lims, _, _ = binned_statistic(pos_arr[:, 0], pos_arr[:, 1], statistic='min', bins=bin_edges)
 
+        # group all the values corresponding to gaps in the beam returns
         nan_loc = np.where(np.isnan(upper_lims))
         nan_groups = group_consecutive(nan_loc[0].tolist())
 
+        # find start and end of valid strips
         chunks = locate_slice_by_group(nan_groups, x_coords.shape[0])
 
         main_geom = ogr.Geometry(ogr.wkbMultiPolygon)
 
+        # find polygons for each strip and add to main_geom
         for chunk in chunks:
             if chunk[0] >= chunk[1]:
                 continue
             else:
+
+                # bin widths of this chunk (strip)
                 chunk_bin_widths = bin_widths[chunk[0]:chunk[1]]
 
+                # find upper and lower bounds of data
                 upper_bounds = np.vstack([x_coords[chunk[0]:chunk[1]],
                                           upper_lims[chunk[0]:chunk[1]]])
-
                 lower_bounds = np.vstack([x_coords[chunk[0]:chunk[1]],
                                           lower_lims[chunk[0]:chunk[1]]])
 
+                # correct data because right now bin width dictates beam width
                 corr_upper_bounds, corr_lower_bounds = correct_bounds(upper_bounds,
                                                                       lower_bounds,
                                                                       chunk_bin_widths)
 
+                # reverse lower bounds to make a polygon
                 corr_lower_bounds = np.flip(corr_lower_bounds, 1)
 
+                # combine coordinates for polygon shape
                 part_geom_coords = np.hstack([corr_upper_bounds, corr_lower_bounds]).T
                 part_geom_coords = np.vstack([part_geom_coords, part_geom_coords[0, :]])
 
+                # make json geometry string
                 part_geom_json = json.dumps({'type': 'Polygon', 'coordinates': [part_geom_coords.tolist()]})
                 part_geom = Vector.get_osgeo_geom(part_geom_json, 'json')
 
-                # out_geom = geom.Buffer(buffer)
                 part_geom.Buffer(buffer)
 
-                # main_geom.AddGeometryDirectly(out_geom)
+                # add to main geometry
                 main_geom.AddGeometryDirectly(part_geom)
 
         attributes = {'BEAM': beam_id,
@@ -137,6 +149,7 @@ def correct_bounds(u_bounds,
                    bin_widths):
     """
     Method to correct upper and lower bounds of GEDI beam path derived from histograms
+    and remove dependence of beam width on bin size
 
     :param u_bounds: upper bounds of beam path : array([[x1, x2, ....],
                                                         [y1, y2, ....]])
@@ -164,8 +177,10 @@ def correct_bounds(u_bounds,
         cos_theta = np.cos(theta)
         sin_theta = np.sin(theta)
 
-        y_corr = (y_diff - (x_diff * tan_theta)) * (cos_theta ** 2)
-        x_corr = (y_diff - (x_diff * tan_theta)) * (cos_theta * sin_theta)
+        beam_width = (y_diff - (x_diff * tan_theta)) * cos_theta
+
+        y_corr = beam_width * cos_theta
+        x_corr = beam_width * sin_theta
 
         corr = np.vstack([x_corr,
                           y_corr])
