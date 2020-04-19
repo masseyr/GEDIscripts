@@ -179,21 +179,7 @@ if __name__ == '__main__':
 
     file_list = Handler(dirname=gedi_dir).find_all('*.h5')
 
-    features = {}
-
-    with mp.Pool(processes=nproc) as pool:
-
-        for file_output, err_str in pool.imap_unordered(get_path, file_list):
-            if err_str is None and len(file_output) > 0:
-                attr_list = []
-                for geom_wkt, attrs in file_output:
-                    features.update({geom_wkt: attrs})
-                    attr_list.append(attrs)
-
-                Opt.cprint(str(list(set([attr['FILE'] for attr in attr_list]))[0]) + ' : Processed')
-            else:
-                Opt.cprint(file_output, newline=' : ')
-                Opt.cprint(err_str)
+    pool = mp.Pool(processes=nproc)
 
     vec = Vector(name='gedi_extent',
                  epsg=4326,
@@ -201,8 +187,15 @@ if __name__ == '__main__':
                  filename=outfile,
                  attr_def=attrib)
 
-    for geometry, attributes in features.items():
-        vec.add_feat(ogr.CreateGeometryFromWkt(geometry), attr=attributes)
+    for file_output, err_str in pool.imap_unordered(get_path, file_list):
+        if err_str is None and len(file_output) > 0:
+            for geom_wkt, attrs in file_output:
+                vec.add_feat(ogr.CreateGeometryFromWkt(geom_wkt), attr=attrs)
+
+            Opt.cprint(str(list(set([attr['FILE'] for _, attr in file_output]))[0]) + ' : Processed')
+        else:
+            Opt.cprint(file_output, newline=' : ')
+            Opt.cprint(err_str)
 
     Opt.cprint(vec)
     Opt.cprint(outfile)
@@ -210,4 +203,5 @@ if __name__ == '__main__':
 
     Opt.cprint('\n----------------------------------------------------------')
 
+    pool.close()
 
