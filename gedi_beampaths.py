@@ -29,13 +29,11 @@ python gedi_footprint.py [gedi directory] [output shapefile] [number of parallel
 
 
 def get_path(filename,
-             res=0.1,
-             buffer=0.000135):
+             res=0.1):
     """
     Method to extract path from a GEDI file
     :param filename: GEDI filename
     :param res: bin resolution (degrees) (default : 0.1 degrees)
-    :param buffer: buffer from outermost point (degrees) (default: 0.000135 deg or approx 12.5 mts)
     :return: (attribute dictionary, geometry WKT, None) if no error is raised while opening file
             (None, None, error string) if error is raised
     """
@@ -51,10 +49,6 @@ def get_path(filename,
         bin_edges = np.hstack([bin_edges, np.array([180.0])])
 
     x_coords = (bin_edges[:-1] + bin_edges[1:]) / 2.0
-
-    if buffer < res:  # if buffer is more than or eq to half bin width, ignore buffer
-        x_coords[0] = x_coords[0] + buffer
-        x_coords[-1] = x_coords[-1] - buffer
 
     file_keys = []
     try:
