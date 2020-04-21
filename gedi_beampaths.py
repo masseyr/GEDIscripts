@@ -9,7 +9,6 @@ import h5py
 import json
 import sys
 
-
 '''
 Script to draw extents of GEDI products inside a directory. 
 The output is a shapefile with Geographic projection and 
@@ -28,15 +27,21 @@ python gedi_footprint.py [gedi directory] [output shapefile] [number of parallel
 '''
 
 
-def get_path(filename,
-             res=0.1):
+def get_path(args):
     """
     Method to extract path from a GEDI file
-    :param filename: GEDI filename
-    :param res: bin resolution (degrees) (default : 0.1 degrees)
+    args:
+        filename: GEDI filename
+        bounds_wkt: WKT representation of boundary geometry
+        res: bin resolution (degrees) (default : 0.1 degrees)
+        buffer: buffer in degrees
+
     :return: (attribute dictionary, geometry WKT, None) if no error is raised while opening file
             (None, None, error string) if error is raised
     """
+
+    filename, bounds_wkt, res, buffer = args
+
     date_str = Handler(filename).basename.split('_')[2]
 
     year = int(date_str[0:4])
@@ -49,6 +54,8 @@ def get_path(filename,
         bin_edges = np.hstack([bin_edges, np.array([180.0])])
 
     x_coords = (bin_edges[:-1] + bin_edges[1:]) / 2.0
+
+    bounds_geom = ogr.CreateGeometryFromWkt(bounds_wkt)
 
     file_keys = []
     try:
@@ -94,7 +101,9 @@ def get_path(filename,
         # find start and end of valid strips
         chunks = locate_slice_by_group(nan_groups, x_coords.shape[0])
 
-        main_geom = ogr.Geometry(ogr.wkbMultiLineString)
+        main_geom = ogr.Geometry(ogr.wkbMultiPolygon)
+
+        any_geom = False
 
         # find polygons for each strip and add to main_geom
         for chunk in chunks:
@@ -103,24 +112,37 @@ def get_path(filename,
             else:
 
                 # find upper and lower bounds of data
-                upper_bounds = np.vstack([ x_coords[chunk[0]:chunk[1]], upper_lims[chunk[0]:chunk[1]]])
+                upper_bounds = np.vstack([x_coords[chunk[0]:chunk[1]], upper_lims[chunk[0]:chunk[1]]])
                 lower_bounds = np.vstack([x_coords[chunk[0]:chunk[1]], lower_lims[chunk[0]:chunk[1]]])
 
-                mean_coords = ((upper_bounds + lower_bounds)/2.0).T.tolist()
+                mean_coords = ((upper_bounds + lower_bounds) / 2.0).T.tolist()
 
                 # make json geometry string
                 part_geom_json = json.dumps({'type': 'Linestring', 'coordinates': mean_coords})
                 part_geom = Vector.get_osgeo_geom(part_geom_json, 'json')
 
-                # add to main geometry
-                main_geom.AddGeometryDirectly(part_geom)
+                if part_geom.Intersects(bounds_geom):
+                    any_geom = True
+
+                    part_geom_buffer = part_geom.Buffer(buffer)
+
+                    part_geom_intersection = part_geom_buffer.Intersection(bounds_geom)
+
+                    # add to main geometry
+                    main_geom.AddGeometryDirectly(part_geom_intersection)
 
         attributes = {'BEAM': beam_id,
                       'FILE': Handler(filename).basename,
                       'YEAR': year,
                       'JDAY': julian_day}
 
-        feat_list.append((main_geom.ExportToWkt(), attributes))
+        if any_geom:
+            wkt = main_geom.ExportToWkt()
+            main_geom = None
+        else:
+            wkt = None
+
+        feat_list.append((wkt, attributes))
 
     if len(feat_list) == 0:
         return Handler(filename).basename, err
@@ -171,46 +193,52 @@ def locate_slice_by_group(pts, length):
 
 if __name__ == '__main__':
 
-    script, gedi_dir, outfile, nproc = sys.argv
+    script, gedi_dir, bounds_file, outfile, nproc = sys.argv
 
     nproc = int(nproc)
+    pool = mp.Pool(processes=nproc)
 
     attrib = {'BEAM': 'int', 'FILE': 'str', 'YEAR': 'int', 'JDAY': 'int'}
 
-    file_list = Handler(dirname=gedi_dir).find_all('*.h5')
-    n_files = len(file_list)
+    res = 0.1
+    buffer = 0.000135
+
+    bounds_vec = Vector(bounds_file)
+    bounds_wkt = bounds_vec.wktlist[0]
+
+    args_list = list((filename, bounds_wkt, res, buffer)
+                     for filename in Handler(dirname=gedi_dir).find_all('*.h5'))
+
+    n_files = len(args_list)
 
     Opt.cprint('Number of files: {}'.format(str(n_files)))
 
-    feat_dict = {}
-
-    pool = mp.Pool(processes=nproc)
-
-    for file_output, err_str in pool.imap_unordered(get_path, file_list):
-        if err_str is None and len(file_output) > 0:
-            for geom_wkt, attrs in file_output:
-                feat_dict.update({geom_wkt, attrs})
-
-            Opt.cprint(str(list(set([attr['FILE'] for _, attr in file_output]))[0]) + ' : READ')
-        else:
-            Opt.cprint(file_output, newline=' : ')
-            Opt.cprint(err_str)
-
-    Opt.cprint(len(feat_dict))
-
     vec = Vector(name='gedi_extent',
                  epsg=4326,
-                 geom_type='multilinestring',
+                 geom_type='MultiPolygon',
                  filename=outfile,
                  attr_def=attrib)
 
-    Opt.cprint(vec)
+    for file_output, err_str in pool.imap_unordered(get_path, args_list):
+        if err_str is None and len(file_output) > 0:
+            for geom_wkt, attrs in file_output:
+                if geom_wkt is not None:
+                    vec.add_feat(ogr.CreateGeometryFromWkt(geom_wkt), attr=attrs)
 
-    for geom_wkt, attrs in feat_dict.items():
-        vec.add_feat(ogr.CreateGeometryFromWkt(geom_wkt), attr=attrs)
+            Opt.cprint(str(list(set([attr['FILE'] for _, attr in file_output]))[0]) + ' : READ')
+        else:
+            if err_str is None:
+                err_str = ''
+
+            Opt.cprint('{}: {}'.format(file_output,
+                                       err_str))
+
+    vec.datasource = None
 
     Opt.cprint(vec)
     Opt.cprint(outfile)
-    vec.datasource = None
 
     Opt.cprint('\n----------------------------------------------------------')
+
+    pool.close()
+
